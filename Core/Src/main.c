@@ -42,9 +42,11 @@
 UART_HandleTypeDef hlpuart1;
 
 TIM_HandleTypeDef htim4;
+TIM_HandleTypeDef htim8;
 
 /* USER CODE BEGIN PV */
-
+double Duty_Cycle = 0.0;
+double freq = 0.0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -52,6 +54,7 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_LPUART1_UART_Init(void);
 static void MX_TIM4_Init(void);
+static void MX_TIM8_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -91,8 +94,10 @@ int main(void)
   MX_GPIO_Init();
   MX_LPUART1_UART_Init();
   MX_TIM4_Init();
+  MX_TIM8_Init();
   /* USER CODE BEGIN 2 */
   HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_1);
+  HAL_TIM_Base_Start_IT(&htim8);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -103,14 +108,45 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  for(i=0; i<999;i++){
-		  HAL_Delay(1);
-		  __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, i);
-	  }
-	  for(i=999; i>0;i--){
-		  HAL_Delay(1);
-		  __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, i);
-	  }
+
+	  // Beginner
+	  // ARR+1 = 1000
+//	  __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, 300);
+//	  HAL_Delay(500);
+//	  __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, 500);
+//	  HAL_Delay(500);
+//	  __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, 700);
+//	  HAL_Delay(500);
+//	  __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, 900);
+//	  HAL_Delay(500);
+
+	  // Basic
+	  // ARR+1 = 1000
+//	  for(i=0; i<999;i++){
+//		  HAL_Delay(1);
+//		  __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, i);
+//	  }
+//	  for(i=999; i>0;i--){
+//		  HAL_Delay(1);
+//		  __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, i);
+//	  }
+
+	  // Advanced - 1
+	  // Initial: PSC = 169, ARR = 999, Pulse = 1000
+//	  for(int i=999; i<1999; i++){
+//	      HAL_TIM_SET_AUTORELOAD(&htim4, i);
+//	      freq = 170*1000000/((i+1)*(169+1));
+//	      Duty_Cycle = 1000/(i+1);
+//	      Delay(200);
+//	  }
+//	  for(int i=1999; i>999; i--){
+//	      HAL_TIM_SET_AUTORELOAD(&htim4, i);
+//	      freq = 170*1000000/((i+1)*(169+1));
+//	      Duty_Cycle = 1000/(i+1);
+//	      Delay(200);
+//	  }
+
+	  // Advanced - 2 is in section "User code 4"
   }
   /* USER CODE END 3 */
 }
@@ -258,6 +294,53 @@ static void MX_TIM4_Init(void)
 }
 
 /**
+  * @brief TIM8 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM8_Init(void)
+{
+
+  /* USER CODE BEGIN TIM8_Init 0 */
+
+  /* USER CODE END TIM8_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM8_Init 1 */
+
+  /* USER CODE END TIM8_Init 1 */
+  htim8.Instance = TIM8;
+  htim8.Init.Prescaler = 16999;
+  htim8.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim8.Init.Period = 9999;
+  htim8.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim8.Init.RepetitionCounter = 0;
+  htim8.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim8) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim8, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterOutputTrigger2 = TIM_TRGO2_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim8, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM8_Init 2 */
+
+  /* USER CODE END TIM8_Init 2 */
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -288,10 +371,37 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(LD2_GPIO_Port, &GPIO_InitStruct);
 
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
+
 }
 
 /* USER CODE BEGIN 4 */
-
+// Advanced - 2
+int pulse = 0;
+int rising = 1;
+int toggle = 0;
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
+	if(GPIO_Pin == GPIO_PIN_13){
+		if(rising)	pulse += 100;
+		else	pulse -= 100;
+		if(pulse == 1000)	rising = 0;
+		if(pulse == 0)	rising = 1;
+	}
+}
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
+	if(htim->Instance == TIM8){
+		if(toggle){
+			__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, pulse);
+			toggle = 0;
+		}
+		else{
+			__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, 0);
+			toggle = 1;
+		}
+	}
+}
 /* USER CODE END 4 */
 
 /**
